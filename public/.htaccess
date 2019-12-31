@@ -1,3 +1,10 @@
+# Extra Security Headers
+<IfModule mod_headers.c>
+	Header always set X-XSS-Protection "1; mode=block"
+	Header always set X-Frame-Options DENY
+	Header always set X-Content-Type-Options nosniff
+</IfModule>
+
 # Enable this line to temporarily disable the Apache rewrite cache.
 #Header set Cache-Control "max-age=0, private, no-store, no-cache, must-revalidate"
 
