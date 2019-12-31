@@ -76,3 +76,9 @@ vagrant/Homestead/
 # Igore npm lockfile
 build/package-lock.json
 build/package.lock
+
+# ignore custom sprinkles
+app/sprinkles/*
+!app/sprinkles/core/
+!app/sprinkles/admin/
+!app/sprinkles/account/
