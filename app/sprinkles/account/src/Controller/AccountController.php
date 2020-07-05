@@ -58,9 +58,6 @@ class AccountController extends SimpleController
      */
     public function checkUsername(Request $request, Response $response, $args)
     {
-        /** @var \UserFrosting\Sprinkle\Core\Alert\AlertStream $ms */
-        $ms = $this->ci->alerts;
-
         // GET parameters
         $params = $request->getQueryParams();
 
@@ -97,7 +94,7 @@ class AccountController extends SimpleController
         /** @var \UserFrosting\Sprinkle\Core\Util\ClassMapper $classMapper */
         $classMapper = $this->ci->classMapper;
 
-        /** @var \UserFrosting\I18n\MessageTranslator $translator */
+        /** @var \UserFrosting\I18n\Translator $translator */
         $translator = $this->ci->translator;
 
         // Log throttleable event
@@ -399,13 +396,11 @@ class AccountController extends SimpleController
             return $response->withJson([], 429);
         }
 
-        // Log throttleable event
-        $throttler->logEvent('sign_in_attempt', $throttleData);
-
         // If credential is an email address, but email login is not enabled, raise an error.
-        // Note that we do this after logging throttle event, so this error counts towards throttling limit.
+        // Note that this error counts towards the throttling limit.
         if ($isEmail && !$config['site.login.enable_email']) {
             $ms->addMessageTranslated('danger', 'USER_OR_PASS_INVALID');
+            $throttler->logEvent('sign_in_attempt', $throttleData);
 
             return $response->withJson([], 403);
         }
@@ -414,7 +409,14 @@ class AccountController extends SimpleController
         /** @var \UserFrosting\Sprinkle\Account\Authenticate\Authenticator $authenticator */
         $authenticator = $this->ci->authenticator;
 
-        $currentUser = $authenticator->attempt(($isEmail ? 'email' : 'user_name'), $userIdentifier, $data['password'], $data['rememberme']);
+        try {
+            $currentUser = $authenticator->attempt(($isEmail ? 'email' : 'user_name'), $userIdentifier, $data['password'], $data['rememberme']);
+        } catch (\Exception $e) {
+            // only let unsuccessful logins count toward the throttling limit
+            $throttler->logEvent('sign_in_attempt', $throttleData);
+
+            throw $e;
+        }
 
         $ms->addMessageTranslated('success', 'WELCOME', $currentUser->export());
 
@@ -500,9 +502,6 @@ class AccountController extends SimpleController
         /** @var \UserFrosting\Support\Repository\Repository $config */
         $config = $this->ci->config;
 
-        /** @var \UserFrosting\I18n\LocalePathBuilder */
-        $localePathBuilder = $this->ci->localePathBuilder;
-
         if (!$config['site.registration.enabled']) {
             throw new NotFoundException();
         }
@@ -526,14 +525,17 @@ class AccountController extends SimpleController
         $validatorRegister = new JqueryValidationAdapter($schema, $this->ci->translator);
 
         // Get locale information
-        $currentLocales = $localePathBuilder->getLocales();
+        $currentLocale = $this->ci->translator->getLocale()->getIdentifier();
+
+        // Get a list of all locales
+        $locales = $this->ci->locale->getAvailableOptions();
 
         // Hide the locale field if there is only 1 locale available
         $fields = [
             'hidden'   => [],
             'disabled' => [],
         ];
-        if (count($config->getDefined('site.locales.available')) <= 1) {
+        if (count($locales) <= 1) {
             $fields['hidden'][] = 'locale';
         }
 
@@ -545,8 +547,8 @@ class AccountController extends SimpleController
             ],
             'fields'  => $fields,
             'locales' => [
-                'available' => $config['site.locales.available'],
-                'current'   => end($currentLocales),
+                'available' => $locales,
+                'current'   => $currentLocale,
             ],
         ]);
     }
@@ -708,14 +710,14 @@ class AccountController extends SimpleController
         $validatorProfileSettings = new JqueryValidationAdapter($schema, $this->ci->translator);
 
         // Get a list of all locales
-        $locales = $config->getDefined('site.locales.available');
+        $locales = $this->ci->locale->getAvailableOptions();
 
         // Hide the locale field if there is only 1 locale available
         $fields = [
             'hidden'   => [],
             'disabled' => [],
         ];
-        if (count($config->getDefined('site.locales.available')) <= 1) {
+        if (count($locales) <= 1) {
             $fields['hidden'][] = 'locale';
         }
 
@@ -830,8 +832,11 @@ class AccountController extends SimpleController
 
         $error = false;
 
+        // Get locales
+        $locales = $this->ci->locale->getAvailableIdentifiers();
+
         // Ensure that in the case of using a single locale, that the locale is set
-        if (count($config->getDefined('site.locales.available')) <= 1) {
+        if (count($locales) <= 1) {
             $data['locale'] = $currentUser->locale;
         }
 
@@ -843,8 +848,7 @@ class AccountController extends SimpleController
         }
 
         // Check that locale is valid
-        $locales = $config->getDefined('site.locales.available');
-        if (isset($data['locale']) && !array_key_exists($data['locale'], $locales)) {
+        if (isset($data['locale']) && !in_array($data['locale'], $locales)) {
             $ms->addMessageTranslated('danger', 'LOCALE.INVALID', $data);
             $error = true;
         }
@@ -953,7 +957,7 @@ class AccountController extends SimpleController
         $error = false;
 
         // Ensure that in the case of using a single locale, that the locale is set
-        if (count($config->getDefined('site.locales.available')) <= 1) {
+        if (count($this->ci->locale->getAvailableIdentifiers()) <= 1) {
             $data['locale'] = $config['site.registration.user_defaults.locale'];
         }
 
@@ -1252,7 +1256,7 @@ class AccountController extends SimpleController
         $error = false;
 
         // Ensure that in the case of using a single locale, that the locale is set
-        if (count($config->getDefined('site.locales.available')) <= 1) {
+        if (count($this->ci->locale->getAvailableIdentifiers()) <= 1) {
             $data['locale'] = $currentUser->locale;
         }
 

@@ -1,24 +1,27 @@
-sudo: false
-dist: trusty
+dist: xenial
 language: php
 
 services:
   - mysql
   - postgresql
   - memcached
-  - redis-server
+  - redis
 
 php:
   - 7.1
   - 7.2
   - 7.3
+  - 7.4
 
 env:
-  matrix:
+  jobs:
     - DB=mysql
     - DB=sqlite
     - DB=pgsql
     - DB=memory
+
+jobs:
+  fast_finish: true
 
 cache:
   directories:
